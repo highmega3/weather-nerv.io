@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>JMA RAIN WATCH // ORANGE GRID</title>
+
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+<style>
+:root{
+  --bg:#080806;
+  --panel:#10100d;
+  --panel2:#18150d;
+  --orange:#ff8a00;
+  --orange2:#ffb347;
+  --dim:#9b6927;
+  --grid:rgba(255,138,0,.10);
+  --text:#ffe2b1;
+  --ok:#ffd07a;
+  --warn:#ff5e00;
+  --line:rgba(255,138,0,.45);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Consolas,"Noto Sans JP",monospace;overflow:hidden}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.26;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 4px);
+  mix-blend-mode:screen
+}
+.app{height:100%;display:grid;grid-template-columns:360px 1fr;grid-template-rows:54px 1fr}
+header{
+  grid-column:1/3;display:flex;align-items:center;justify-content:space-between;padding:0 18px;
+  border-bottom:1px solid var(--orange);background:linear-gradient(90deg,#160f05,#080806);
+  box-shadow:0 0 24px rgba(255,138,0,.15)
+}
+.brand{font-weight:800;letter-spacing:.16em;color:var(--orange2)}
+.brand small{display:block;font-size:10px;color:var(--dim);letter-spacing:.24em;margin-top:2px}
+.status{display:flex;gap:12px;align-items:center;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 12px var(--orange)}
+aside{
+  position:relative;z-index:600;background:rgba(8,8,6,.96);border-right:1px solid var(--orange);
+  overflow:auto;padding:14px
+}
+aside::-webkit-scrollbar{width:6px}
+aside::-webkit-scrollbar-thumb{background:#6a3b00}
+.panel{
+  border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,138,0,.045),rgba(255,138,0,.012));
+  margin-bottom:12px;padding:12px;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))
+}
+.panel h3{font-size:11px;margin:0 0 10px;color:var(--orange);letter-spacing:.14em}
+label{display:block;font-size:10px;color:#c6934c;margin:8px 0 4px}
+input,select,button{
+  width:100%;background:#0c0b08;border:1px solid #704300;color:var(--text);padding:9px;font:inherit;font-size:12px;
+  outline:none;border-radius:0
+}
+input:focus,select:focus{border-color:var(--orange);box-shadow:0 0 0 1px rgba(255,138,0,.25)}
+button{cursor:pointer;background:linear-gradient(#2a1908,#120d07);color:var(--orange2);font-weight:700;letter-spacing:.05em}
+button:hover{border-color:var(--orange);background:#2d1906}
+button.secondary{color:#cf9e56}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:11px;padding:4px 0;border-bottom:1px dotted rgba(255,138,0,.2)}
+.kv span:last-child{color:var(--orange2);text-align:right}
+.place{
+  padding:9px;border:1px solid rgba(255,138,0,.25);margin:7px 0;cursor:pointer;background:rgba(255,138,0,.025)
+}
+.place.active{border-color:var(--orange);box-shadow:inset 3px 0 var(--orange)}
+.place .name{font-size:12px;color:var(--orange2);font-weight:700}
+.place .sub{font-size:9px;color:#8e6a3b;margin-top:3px}
+.log{height:125px;overflow:auto;font-size:9px;line-height:1.55;color:#be8c49;background:#070705;padding:7px;border:1px solid #3f2707}
+.log b{color:var(--orange2)}
+main{position:relative;min-width:0}
+#map{height:100%;background:#090907}
+.leaflet-container{font-family:Consolas,"Noto Sans JP",monospace}
+.leaflet-tile-pane{filter:grayscale(1) sepia(1) hue-rotate(350deg) saturate(4.2) brightness(.48) contrast(1.25)}
+.leaflet-control-zoom a{background:#120d06!important;color:var(--orange)!important;border-color:#704300!important}
+.leaflet-control-attribution{background:rgba(0,0,0,.65)!important;color:#7d5a2b!important}
+.leaflet-control-attribution a{color:#ba7e32!important}
+.map-frame{position:absolute;inset:12px;pointer-events:none;z-index:500;border:1px solid rgba(255,138,0,.35)}
+.map-frame:before,.map-frame:after{content:"";position:absolute;width:78px;height:20px;border-top:2px solid var(--orange);top:-2px}
+.map-frame:before{left:-1px;border-left:2px solid var(--orange)}
+.map-frame:after{right:-1px;border-right:2px solid var(--orange)}
+.hud{
+  position:absolute;z-index:700;right:25px;top:24px;width:245px;background:rgba(8,8,6,.88);
+  border:1px solid var(--line);padding:10px;pointer-events:none
+}
+.hud .big{font-size:28px;color:var(--orange2);line-height:1}
+.hud .tiny{font-size:9px;color:#9a713c;margin-top:5px}
+.timeline{
+  position:absolute;z-index:700;left:25px;right:285px;bottom:24px;background:rgba(8,8,6,.88);
+  border:1px solid var(--line);padding:9px;display:flex;gap:7px;align-items:center
+}
+.timeline input{padding:0;accent-color:var(--orange)}
+.badge{display:inline-block;border:1px solid var(--line);padding:3px 6px;color:var(--orange2);font-size:9px}
+.radar-note{font-size:9px;color:#9a713c;margin-top:6px}
+.alert{color:#ff6a00!important;text-shadow:0 0 9px rgba(255,80,0,.45)}
+@media(max-width:800px){
+  .app{grid-template-columns:1fr;grid-template-rows:54px 42vh 1fr;overflow:auto}
+  header{grid-column:1}
+  main{grid-row:2}
+  aside{grid-row:3;border-right:0;border-top:1px solid var(--orange)}
+  .hud{width:190px}.timeline{right:25px}
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+<header>
+  <div class="brand">JMA RAIN WATCH // O-GRID<small>PRECIPITATION PROXIMITY MONITOR</small></div>
+  <div class="status"><span class="dot"></span><span id="systemState">STANDBY</span><span id="clock">--:--:--</span></div>
+</header>
+
+<aside>
+  <section class="panel">
+    <h3>[ TARGET REGISTRATION ]</h3>
+    <label>地点名</label><input id="name" value="監視地点 A">
+    <div class="row">
+      <div><label>緯度</label><input id="lat" type="number" step="0.00001" value="35.68124"></div>
+      <div><label>経度</label><input id="lon" type="number" step="0.00001" value="139.76712"></div>
+    </div>
+    <div class="btnrow">
+      <button id="useMap">地図中心を入力</button>
+      <button id="geo">現在地を取得</button>
+    </div>
+    <button id="save" style="margin-top:7px">＋ 地点を登録 / 更新</button>
+  </section>
+
+  <section class="panel">
+    <h3>[ MONITOR PARAMETERS ]</h3>
+    <div class="row">
+      <div><label>監視半径 km</label><input id="radius" type="number" min="1" max="100" step="1" value="10"></div>
+      <div><label>更新間隔 分</label><input id="interval" type="number" min="5" max="120" step="5" value="5"></div>
+    </div>
+    <label>雨通知しきい値</label>
+    <select id="threshold">
+      <option value="0.1">0.1 mm/h 以上</option>
+      <option value="1" selected>1 mm/h 以上</option>
+      <option value="5">5 mm/h 以上</option>
+      <option value="10">10 mm/h 以上</option>
+      <option value="20">20 mm/h 以上</option>
+    </select>
+    <div class="btnrow">
+      <button id="notify">通知を許可</button>
+      <button id="refresh">即時更新</button>
+    </div>
+    <div class="radar-note">SYSTEM MINIMUM: 5 min / 1 km</div>
+  </section>
+
+  <section class="panel">
+    <h3>[ REGISTERED TARGETS ]</h3>
+    <div id="places"></div>
+  </section>
+
+  <section class="panel">
+    <h3>[ LOCAL SENSOR ]</h3>
+    <div class="kv"><span>最寄りAMeDAS</span><span id="stn">--</span></div>
+    <div class="kv"><span>距離</span><span id="dist">--</span></div>
+    <div class="kv"><span>気温</span><span id="temp">--</span></div>
+    <div class="kv"><span>降水量</span><span id="precip">--</span></div>
+    <div class="kv"><span>風</span><span id="wind">--</span></div>
+    <div class="kv"><span>観測時刻</span><span id="obsTime">--</span></div>
+  </section>
+
+  <section class="panel">
+    <h3>[ EVENT LOG ]</h3>
+    <div class="log" id="log"></div>
+  </section>
+</aside>
+
+<main>
+  <div id="map"></div>
+  <div class="map-frame"></div>
+  <div class="hud">
+    <div class="badge">RAIN PROXIMITY</div>
+    <div class="big" id="risk">--</div>
+    <div class="tiny" id="riskText">地点を登録して監視を開始</div>
+    <div class="tiny" id="radarTime">RADAR: --</div>
+  </div>
+  <div class="timeline">
+    <span class="badge" id="frameLabel">T+00</span>
+    <input id="frame" type="range" min="0" max="0" value="0">
+    <span class="badge">JMA NOWCAST</span>
+  </div>
+</main>
+</div>
+
+<script>
+"use strict";
+
+const $ = s => document.querySelector(s);
+const log = (m, strong=false) => {
+  const d = document.createElement("div");
+  d.innerHTML = `[${new Date().toLocaleTimeString("ja-JP")}] ${strong ? "<b>"+m+"</b>" : m}`;
+  $("#log").prepend(d);
+};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function haversine(a,b,c,d){
+  const R=6371, rad=Math.PI/180;
+  const x=(c-a)*rad, y=(d-b)*rad;
+  const q=Math.sin(x/2)**2+Math.cos(a*rad)*Math.cos(c*rad)*Math.sin(y/2)**2;
+  return 2*R*Math.asin(Math.sqrt(q));
+}
+function fmtJst(s){
+  if(!s) return "--";
+  const y=s.slice(0,4),m=s.slice(4,6),d=s.slice(6,8),hh=s.slice(8,10),mm=s.slice(10,12);
+  return `${m}/${d} ${hh}:${mm}`;
+}
+
+// ---------- Map ----------
+const map = L.map("map", {zoomControl:true}).setView([36.2,138.2], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom:18, attribution:"© OpenStreetMap contributors"
+}).addTo(map);
+
+const markerLayer=L.layerGroup().addTo(map);
+let radiusCircle=null, activeMarker=null, radarLayer=null, radarFrames=[];
+
+// ---------- State ----------
+let places=JSON.parse(localStorage.getItem("orangeRainPlaces")||"[]");
+let activeId=localStorage.getItem("orangeRainActive")||null;
+let amedasTable=null, monitorTimer=null, lastAlertKey="";
+
+function persist(){
+  localStorage.setItem("orangeRainPlaces",JSON.stringify(places));
+  if(activeId) localStorage.setItem("orangeRainActive",activeId);
+}
+function active(){ return places.find(p=>p.id===activeId); }
+
+function renderPlaces(){
+  const host=$("#places"); host.innerHTML="";
+  if(!places.length){ host.innerHTML='<div class="radar-note">NO TARGET REGISTERED</div>'; }
+  places.forEach(p=>{
+    const el=document.createElement("div");
+    el.className="place"+(p.id===activeId?" active":"");
+    el.innerHTML=`<div class="name">${escapeHtml(p.name)}</div><div class="sub">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)} / R=${p.radius}km / ${p.interval}min</div>`;
+    el.onclick=()=>selectPlace(p.id);
+    host.appendChild(el);
+  });
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+
+function selectPlace(id){
+  activeId=id; persist(); renderPlaces();
+  const p=active(); if(!p)return;
+  $("#name").value=p.name; $("#lat").value=p.lat; $("#lon").value=p.lon;
+  $("#radius").value=p.radius; $("#interval").value=p.interval; $("#threshold").value=p.threshold;
+  drawTarget();
+  map.setView([p.lat,p.lon], Math.max(map.getZoom(),9));
+  restartMonitor();
+  updateAll();
+}
+function drawTarget(){
+  markerLayer.clearLayers();
+  if(radiusCircle) map.removeLayer(radiusCircle);
+  const p=active(); if(!p)return;
+  activeMarker=L.circleMarker([p.lat,p.lon],{
+    radius:7,color:"#ff8a00",weight:2,fillColor:"#111",fillOpacity:.9
+  }).addTo(markerLayer).bindTooltip(p.name,{permanent:false});
+  radiusCircle=L.circle([p.lat,p.lon],{
+    radius:p.radius*1000,color:"#ff8a00",weight:1,opacity:.75,fillColor:"#ff8a00",fillOpacity:.035,dashArray:"4 6"
+  }).addTo(map);
+}
+function savePlace(){
+  const lat=parseFloat($("#lat").value), lon=parseFloat($("#lon").value);
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<20||lat>50||lon<118||lon>155){
+    alert("日本周辺の有効な緯度・経度を入力してください。"); return;
+  }
+  const p={
+    id:activeId || crypto.randomUUID(),
+    name:$("#name").value.trim()||"監視地点",
+    lat,lon,
+    radius:clamp(parseFloat($("#radius").value)||10,1,100),
+    interval:clamp(parseInt($("#interval").value)||5,5,120),
+    threshold:parseFloat($("#threshold").value)||1
+  };
+  const i=places.findIndex(x=>x.id===p.id);
+  if(i>=0) places[i]=p; else places.push(p);
+  activeId=p.id; persist(); renderPlaces(); drawTarget(); restartMonitor(); updateAll();
+  log(`監視地点「${p.name}」を登録`,true);
+}
+
+$("#save").onclick=savePlace;
+$("#useMap").onclick=()=>{
+  const c=map.getCenter(); $("#lat").value=c.lat.toFixed(5); $("#lon").value=c.lng.toFixed(5);
+};
+$("#geo").onclick=()=>{
+  if(!navigator.geolocation){alert("Geolocation未対応です");return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    $("#lat").value=pos.coords.latitude.toFixed(5); $("#lon").value=pos.coords.longitude.toFixed(5);
+    map.setView([pos.coords.latitude,pos.coords.longitude],12);
+  },e=>alert("現在地を取得できません: "+e.message));
+};
+$("#notify").onclick=async()=>{
+  if(!("Notification" in window)){ alert("このブラウザは通知に対応していません。");return; }
+  const r=await Notification.requestPermission();
+  log("通知権限: "+r,true);
+};
+$("#refresh").onclick=updateAll;
+
+// ---------- JMA radar ----------
+async function loadRadarFrames(){
+  try{
+    const urls=[
+      "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json",
+      "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json"
+    ];
+    const arr=[];
+    for(const u of urls){
+      try{ arr.push(...await (await fetch(u,{cache:"no-store"})).json()); }catch(_){}
+    }
+    const seen=new Set();
+    radarFrames=arr.filter(x=>{
+      const k=x.basetime+"_"+x.validtime;
+      if(seen.has(k))return false;seen.add(k);return true;
+    }).sort((a,b)=>a.validtime.localeCompare(b.validtime));
+    if(!radarFrames.length) throw new Error("frame list empty");
+
+    $("#frame").max=radarFrames.length-1;
+    $("#frame").value=Math.max(0,radarFrames.findLastIndex(x=>x.validtime<=latestNowKey()));
+    updateRadar(parseInt($("#frame").value));
+    log(`JMAレーダー時刻表を取得: ${radarFrames.length} frames`);
+  }catch(e){
+    log("JMAレーダー取得失敗: "+e.message,true);
+  }
+}
+function latestNowKey(){
+  const d=new Date(Date.now()+9*3600e3);
+  return d.toISOString().replace(/\D/g,"").slice(0,12)+"00";
+}
+function updateRadar(i){
+  if(!radarFrames.length)return;
+  i=clamp(i,0,radarFrames.length-1);
+  const f=radarFrames[i];
+  if(radarLayer) map.removeLayer(radarLayer);
+  const url=`https://www.jma.go.jp/bosai/jmatile/data/nowc/${f.basetime}/none/${f.validtime}/surf/hrpns/{z}/{x}/{y}.png`;
+  radarLayer=L.tileLayer(url,{opacity:.62,maxNativeZoom:10,maxZoom:18,zIndex:300,tileSize:256});
+  radarLayer.addTo(map);
+  $("#radarTime").textContent="RADAR: "+fmtJst(f.validtime);
+  const base=radarFrames.find(x=>x.validtime===x.basetime) || radarFrames[0];
+  const mins=Math.round((parseJma(f.validtime)-parseJma(base.validtime))/60000);
+  $("#frameLabel").textContent=(mins>=0?`T+${String(mins).padStart(2,"0")}`:`T${mins}`);
+}
+function parseJma(s){
+  const y=+s.slice(0,4),m=+s.slice(4,6)-1,d=+s.slice(6,8),h=+s.slice(8,10),mi=+s.slice(10,12);
+  return new Date(Date.UTC(y,m,d,h-9,mi));
+}
+$("#frame").oninput=e=>updateRadar(+e.target.value);
+
+// ---------- AMeDAS ----------
+async function loadAmedasTable(){
+  if(amedasTable)return amedasTable;
+  const r=await fetch("https://www.jma.go.jp/bosai/amedas/const/amedastable.json",{cache:"force-cache"});
+  if(!r.ok)throw new Error("AMeDAS table HTTP "+r.status);
+  amedasTable=await r.json(); return amedasTable;
+}
+function nearestStation(p,table){
+  let best=null;
+  for(const [id,s] of Object.entries(table)){
+    if(!s.lat||!s.lon)continue;
+    const lat=Number(s.lat[0])+Number(s.lat[1])/60;
+    const lon=Number(s.lon[0])+Number(s.lon[1])/60;
+    const dist=haversine(p.lat,p.lon,lat,lon);
+    if(!best||dist<best.dist)best={id,s,lat,lon,dist};
+  }
+  return best;
+}
+async function getLatestAmedas(p){
+  const table=await loadAmedasTable();
+  const st=nearestStation(p,table);
+  const lt=await (await fetch("https://www.jma.go.jp/bosai/amedas/data/latest_time.txt",{cache:"no-store"})).text();
+  const dt=new Date(lt.trim());
+  // JMA point file is grouped by 3-hour UTC/JST block. Try nearby blocks robustly.
+  const tries=[];
+  for(let back=0;back<=3;back++){
+    const t=new Date(dt.getTime()-back*3600e3);
+    const y=t.getFullYear(),mo=String(t.getMonth()+1).padStart(2,"0"),d=String(t.getDate()).padStart(2,"0");
+    const h=String(Math.floor(t.getHours()/3)*3).padStart(2,"0");
+    tries.push(`${y}${mo}${d}_${h}`);
+  }
+  let data=null;
+  for(const key of tries){
+    const u=`https://www.jma.go.jp/bosai/amedas/data/point/${st.id}/${key}.json`;
+    const r=await fetch(u,{cache:"no-store"});
+    if(r.ok){data=await r.json(); if(Object.keys(data).length)break;}
+  }
+  if(!data)throw new Error("station data unavailable");
+  const keys=Object.keys(data).sort();
+  const k=keys[keys.length-1], v=data[k];
+  return {st,k,v};
+}
+function val(x){return Array.isArray(x)?x[0]:null}
+function dirName(n){
+  const a=["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  if(n==null)return"--"; return a[(Number(n)+15)%16]||String(n);
+}
+
+// ---------- Rain risk ----------
+async function estimateRadarRisk(p){
+  // Browser-side direct pixel sampling. If JMA disallows CORS this gracefully falls back to AMeDAS.
+  if(!radarFrames.length)return null;
+  const future=radarFrames.filter(f=>f.validtime>f.basetime).slice(-8);
+  if(!future.length)return null;
+
+  // sample center + points around configured radius.
+  const pts=[[p.lat,p.lon]];
+  [0,90,180,270].forEach(deg=>{
+    const r=p.radius/111;
+    const a=deg*Math.PI/180;
+    pts.push([p.lat+r*Math.cos(a), p.lon+r*Math.sin(a)/Math.cos(p.lat*Math.PI/180)]);
+  });
+
+  let wet=0,total=0, firstWet=null;
+  for(const f of future){
+    for(const [lat,lon] of pts){
+      try{
+        const rgb=await sampleRadarPixel(f,lat,lon,8);
+        total++;
+        if(rgb && isRainColor(rgb)){
+          wet++; if(!firstWet) firstWet=f.validtime;
+        }
+      }catch(_){}
+    }
+  }
+  if(!total)return null;
+  return {score:wet/total, firstWet};
+}
+async function sampleRadarPixel(f,lat,lon,z=8){
+  const n=2**z;
+  const xFloat=(lon+180)/360*n;
+  const latRad=lat*Math.PI/180;
+  const yFloat=(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n;
+  const x=Math.floor(xFloat),y=Math.floor(yFloat),px=Math.floor((xFloat-x)*256),py=Math.floor((yFloat-y)*256);
+  const u=`https://www.jma.go.jp/bosai/jmatile/data/nowc/${f.basetime}/none/${f.validtime}/surf/hrpns/${z}/${x}/${y}.png`;
+  const img=new Image(); img.crossOrigin="anonymous";
+  img.src=u;
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej});
+  const c=document.createElement("canvas");c.width=c.height=256;
+  const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0);
+  return ctx.getImageData(px,py,1,1).data;
+}
+function isRainColor([r,g,b,a]){
+  if(a<20)return false;
+  // Exclude near-transparent/neutral map colors; JMA rain palette is chromatic.
+  const max=Math.max(r,g,b),min=Math.min(r,g,b);
+  return (max-min)>25 && (b>r*1.05 || g>r*1.05 || r>g*1.15);
+}
+
+async function updateAll(){
+  const p=active();
+  if(!p){ $("#systemState").textContent="NO TARGET"; return; }
+  $("#systemState").textContent="SCANNING";
+  try{
+    await loadRadarFrames();
+    const a=await getLatestAmedas(p);
+    $("#stn").textContent=a.st.s.kjName||a.st.id;
+    $("#dist").textContent=a.st.dist.toFixed(1)+" km";
+    $("#temp").textContent=val(a.v.temp)!=null?val(a.v.temp)+" °C":"--";
+    const pr=val(a.v.precipitation1h);
+    $("#precip").textContent=pr!=null?pr+" mm/h":"--";
+    const w=val(a.v.wind);
+    $("#wind").textContent=w!=null?`${w} m/s ${dirName(val(a.v.windDirection))}`:"--";
+    $("#obsTime").textContent=fmtJst(a.k);
+
+    let risk=0, reason=[];
+    if(pr!=null && pr>=p.threshold){risk=Math.max(risk,.9);reason.push(`最寄り観測点で ${pr} mm/h`);}
+    else if(pr!=null && pr>0){risk=Math.max(risk,.55);reason.push(`周辺で弱い降水 ${pr} mm/h`);}
+
+    const rr=await estimateRadarRisk(p);
+    if(rr){
+      risk=Math.max(risk,rr.score);
+      if(rr.firstWet)reason.push(`レーダー予測で ${fmtJst(rr.firstWet)} 頃に監視圏内の降水シグナル`);
+    }else{
+      reason.push("レーダー画像の自動サンプリング不可（表示は利用可）");
+    }
+
+    let label="LOW";
+    if(risk>=.7)label="HIGH";
+    else if(risk>=.35)label="ELEVATED";
+    $("#risk").textContent=label;
+    $("#risk").classList.toggle("alert",risk>=.7);
+    $("#riskText").textContent=reason.join(" / ")||"目立った降水シグナルなし";
+
+    if(risk>=.7){
+      const key=p.id+"_"+new Date().toISOString().slice(0,16);
+      if(key!==lastAlertKey){
+        lastAlertKey=key;
+        notifyUser(p, reason.join(" / "));
+      }
+    }
+    $("#systemState").textContent="ONLINE";
+    log(`${p.name}: scan complete / risk ${label}`);
+  }catch(e){
+    $("#systemState").textContent="DEGRADED";
+    $("#riskText").textContent="データ取得エラー: "+e.message;
+    log("更新失敗: "+e.message,true);
+  }
+}
+function notifyUser(p,msg){
+  log("RAIN ALERT: "+msg,true);
+  if("Notification" in window && Notification.permission==="granted"){
+    new Notification(`降水接近: ${p.name}`,{body:msg,tag:"rain-"+p.id});
+  }
+}
+function restartMonitor(){
+  clearInterval(monitorTimer);
+  const p=active(); if(!p)return;
+  monitorTimer=setInterval(updateAll, Math.max(5,p.interval)*60*1000);
+}
+
+// ---------- boot ----------
+setInterval(()=>$("#clock").textContent=new Date().toLocaleTimeString("ja-JP",{hour12:false}),1000);
+renderPlaces();
+if(places.length){
+  if(!activeId||!active())activeId=places[0].id;
+  selectPlace(activeId);
+}else{
+  log("地図上で地点を決め、監視地点を登録してください。");
+  loadRadarFrames();
+}
+window.addEventListener("resize",()=>map.invalidateSize());
+</script>
+</body>
+</html>
